@@ -1,171 +1,185 @@
-<p align="center">
-  <a href="https://www.medusajs.com">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/59018053/229103275-b5e482bb-4601-46e6-8142-244f531cebdb.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/59018053/229103726-e5b529a3-9b3f-4970-8a1f-c6af37f087bf.svg">
-    <img alt="Medusa logo" src="https://user-images.githubusercontent.com/59018053/229103726-e5b529a3-9b3f-4970-8a1f-c6af37f087bf.svg">
-    </picture>
-  </a>
-</p>
-<h1 align="center">
-  Medusa DTC Starter
-</h1>
-
-<h4 align="center">
-  <a href="https://docs.medusajs.com">Documentation</a> |
-  <a href="https://www.medusajs.com">Website</a>
-</h4>
+<h1 align="center">Medusashop</h1>
 
 <p align="center">
-  Building blocks for digital commerce
-</p>
-<p align="center">
-  <a href="https://github.com/medusajs/medusa/blob/develop/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Medusa is released under the MIT license." />
-  </a>
-  <a href="https://circleci.com/gh/medusajs/medusa">
-    <img src="https://circleci.com/gh/medusajs/medusa.svg?style=shield" alt="Current CircleCI build status." />
-  </a>
-  <a href="https://github.com/medusajs/medusa/blob/develop/CONTRIBUTING.md">
-    <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat" alt="PRs welcome!" />
-  </a>
-    <a href="https://www.producthunt.com/posts/medusa"><img src="https://img.shields.io/badge/Product%20Hunt-%231%20Product%20of%20the%20Day-%23DA552E" alt="Product Hunt"></a>
-  <a href="https://discord.gg/xpCwq3Kfn8">
-    <img src="https://img.shields.io/badge/chat-on%20discord-7289DA.svg" alt="Discord Chat" />
-  </a>
-  <a href="https://twitter.com/intent/follow?screen_name=medusajs">
-    <img src="https://img.shields.io/twitter/follow/medusajs.svg?label=Follow%20@medusajs" alt="Follow @medusajs" />
-  </a>
+  The souvenir storefront for <a href="https://travories.com">Travories</a> — Nepal's trek-booking marketplace.<br/>
+  A Medusa v2 backend and a Next.js storefront in one Turborepo, built for NPR (VAT-inclusive) pricing and eSewa checkout.
 </p>
 
-# Medusa DTC Starter
+---
 
-A production-ready monorepo starter for direct-to-consumer ecommerce stores powered by Medusa and Next.js. Includes a fully featured storefront with product browsing, cart, checkout, customer accounts, and order management.
+## Overview
 
-## Features
+Medusashop is a monorepo with two apps:
 
-- All of [Medusa's commerce features](https://docs.medusajs.com/resources/commerce-modules)
-- Multi-region support with automatic country detection
-- Product catalog with variant selection
-- Cart with promotion codes
-- Multi-step checkout with shipping and payment
-- Customer accounts with order history and address management
-- Order transfer between accounts
+| App | Package | Stack | Runs on |
+|-----|---------|-------|---------|
+| **Backend** | `@dtc/backend` | Medusa v2, Node 20+, PostgreSQL, Redis | Self-hosted (Docker) |
+| **Storefront** | `@dtc/storefront` | Next.js (App Router), React 19, Tailwind | Vercel |
 
-## Getting Started
+The backend serves the Store/Admin APIs and the admin dashboard (`/app`). The storefront is a server-rendered Next.js app that talks to the backend over the Store API using a publishable key.
 
-### Deploy with Medusa Cloud
+- **Region:** defaults to `np` (Nepal); prices are NPR, VAT-inclusive.
+- **Payments:** eSewa ePay v2 (hosted checkout) via a custom `payment-nepal` module.
+- **Media:** local-file provider by default; optional S3-compatible (Garage) storage.
 
-The fastest way to get started is deploying with [Medusa Cloud](https://cloud.medusajs.com):
+> Repo conventions, directory layout, and commands for contributors live in [AGENTS.md](./AGENTS.md).
 
-1. [Create a Medusa Cloud account](https://cloud.medusajs.com)
-2. Deploy this starter directly from your dashboard
+## Prerequisites
 
-### Local Installation
+- [Node.js](https://nodejs.org/) 20.19+ (or 22.12+)
+- [npm](https://www.npmjs.com/) 11+ (this repo uses npm — see `packageManager` in `package.json`; do not introduce a second lockfile)
+- [PostgreSQL](https://www.postgresql.org/) 15+
+- [Docker](https://www.docker.com/) (for local Redis, and for the production backend deploy)
 
-> **Prerequisites:
->
-> - [Node.js](https://nodejs.org/) v20+
-> - [PostgreSQL](https://www.postgresql.org/) v15+
-> - [pnpm](https://pnpm.io/) v10+
+## Local development
 
-1. Clone the repository and install dependencies:
+**1. Install dependencies** (from the repo root):
 
 ```bash
-git clone https://github.com/medusajs/dtc-starter.git
-cd dtc-starter
-pnpm install
+git clone <your-repo-url> medusashop
+cd medusashop
+npm install
 ```
 
-2. Set up environment variables for the backend:
+**2. Configure the backend:**
 
 ```bash
 cp apps/backend/.env.template apps/backend/.env
 ```
 
-3. Set the database URL in `apps/backend.env`:
+Edit `apps/backend/.env` and set at least:
 
 ```bash
-# Replace with actual database URL, make sure the database exists.
-DATABASE_URL=postgres://postgres:@localhost:5432/medusa-dtc-starter
+DATABASE_URL=postgres://postgres:@localhost:5432/medusa-backend
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=supersecret
+COOKIE_SECRET=supersecret
 ```
 
-4. Start local Redis for Medusa:
+**3. Start Redis** (Postgres is expected to run on your host):
 
 ```bash
 docker compose up -d redis
 ```
 
-5. Run migrations:
+**4. Run migrations and create an admin user:**
 
 ```bash
 cd apps/backend
-pnpm medusa db:migrate
+npm exec medusa db:migrate
+npm exec medusa user -e admin@test.com -p supersecret
+cd ../..
+npm run backend:seed        # optional: seed demo catalogue data
 ```
 
-6. Add admin user:
-
-```bash
-cd apps/backend
-pnpm medusa user -e admin@test.com -p supersecret
-```
-
-7. Start Medusa backend:
-
-```bash
-cd apps/backend
-pnpm dev
-```
-
-8. Open the admin dashboard at `localhost:9000/app` and log in. Retrieve your publishable API key at Settings > Publishable API key.
-
-9. Set up environment variables for the storefront:
+**5. Configure the storefront:**
 
 ```bash
 cp apps/storefront/.env.template apps/storefront/.env.local
 ```
 
-10. Update `apps/storefront/.env.local` with your Medusa publishable API key:
+Start the backend, open the admin at `http://localhost:9000/app`, and grab a key from
+**Settings → Publishable API Keys**. Put it in `apps/storefront/.env.local`:
 
 ```bash
-NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_6c3...
+NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_...
 ```
 
-11. Start storefront:
+**6. Run both apps** (from the repo root):
 
 ```bash
-cd apps/storefront
-pnpm dev
+npm run dev
 ```
 
-The storefront runs on `http://localhost:8000`.
+- Storefront → http://localhost:8000
+- Backend / Admin → http://localhost:9000 (admin at `/app`)
 
-You can slo run the following command from the root to start both backend and storefront:
+Run just one app with `npm run backend:dev` or `npm run storefront:dev`.
 
-```bash
-pnpm dev
+## Project structure
+
+```text
+.
+├── apps/
+│   ├── backend/        # @dtc/backend — Medusa v2 app (API, admin, custom modules)
+│   └── storefront/     # @dtc/storefront — Next.js storefront (deployed to Vercel)
+├── compose.yaml        # Production VPS stack: postgres + redis + backend + caddy
+├── Dockerfile          # Multi-stage build for the Medusa backend
+├── Caddyfile           # Reverse proxy + automatic HTTPS for the backend
+├── turbo.json          # Turborepo task graph
+└── AGENTS.md           # Contributor guide: structure, commands, conventions
 ```
 
-Stop Redis when you do not need it:
+## Environment variables
 
-```bash
-docker compose stop redis
-```
-
-## Configuration
-
-The storefront is configured via environment variables in `apps/storefront/.env.local`:
+### Storefront (`apps/storefront/.env.local`)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from your Medusa backend | — |
-| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | URL of your Medusa backend | `http://localhost:9000` |
-| `NEXT_PUBLIC_DEFAULT_REGION` | Default region country code | `dk` |
-| `NEXT_PUBLIC_BASE_URL` | Base URL of the storefront | `https://localhost:8000` |
+| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from the backend | — |
+| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | URL of the Medusa backend | `http://localhost:9000` |
+| `NEXT_PUBLIC_DEFAULT_REGION` | Default region country code | `np` |
+| `NEXT_PUBLIC_BASE_URL` | Base URL of the storefront | `http://localhost:8000` |
 | `NEXT_PUBLIC_STRIPE_KEY` | Stripe publishable key (optional) | — |
+
+### Backend (`apps/backend/.env`)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string |
+| `JWT_SECRET` / `COOKIE_SECRET` | Session/auth secrets |
+| `STORE_CORS` | Allowed storefront origins (comma-separated) |
+| `ADMIN_CORS` / `AUTH_CORS` | Allowed admin/auth origins |
+| `S3_*` | Optional S3-compatible media storage (leave blank for local files) |
+| `ESEWA_*` | eSewa ePay v2 checkout config (`EPAYTEST` = sandbox) |
+
+See each app's `.env.template` for the full list.
+
+## Deployment
+
+The backend is **self-hosted with Docker Compose**; the storefront is **deployed on Vercel**. Deploy the backend first — the storefront's build fetches from it.
+
+### Backend — VPS (Docker Compose)
+
+The root `compose.yaml` runs the full stack: **Caddy (auto-HTTPS) → backend → PostgreSQL + Redis**, with persistent volumes.
+
+1. **DNS:** point an A-record (e.g. `api.yourdomain.com`) at the VPS IP, and open ports **80** and **443**.
+2. **Domain:** replace `api.yourdomain.com` in `Caddyfile` with your subdomain.
+3. **Environment:** create the root `.env` from the template and fill it in (secrets, `DATABASE_URL`, and CORS — `STORE_CORS` = your Vercel URL, `ADMIN_CORS`/`AUTH_CORS` = your backend domain):
+
+   ```bash
+   cp .env.template .env
+   openssl rand -base64 32   # run twice — for JWT_SECRET and COOKIE_SECRET
+   nano .env
+   ```
+
+4. **Launch** (migrations run automatically on boot):
+
+   ```bash
+   docker compose up -d --build
+   docker compose logs -f backend        # wait for "Server is ready"
+   ```
+
+5. **Create an admin user** (and optionally seed data):
+
+   ```bash
+   docker compose exec backend npx medusa user -e you@email.com -p yourpassword
+   ```
+
+6. **Publishable key:** log into `https://api.yourdomain.com/app` → **Settings → Publishable API Keys** → copy the new `pk_...`.
+
+### Storefront — Vercel
+
+Set these environment variables in the Vercel project, then deploy:
+
+- `NEXT_PUBLIC_MEDUSA_BACKEND_URL` = `https://api.yourdomain.com`
+- `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` = the `pk_...` from the step above
+
+The storefront pre-renders category/collection/product pages at build time, so the backend must be live and reachable before the storefront build runs.
 
 ## Resources
 
 - [Medusa Documentation](https://docs.medusajs.com)
-- [Medusa Cloud](https://cloud.medusajs.com)
-# tavories-shop-fe
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Caddy Documentation](https://caddyserver.com/docs/)
