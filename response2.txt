@@ -1,9 +1,0 @@
-HTTP/1.1 307 Temporary Redirect
-vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
-location: http://localhost:8000/np/checkout?step=payment&error=payment_failed
-set-cookie: _medusa_cart_id=cart_01M1E54FKB2V7DSR29HEP23WRV; Path=/; Expires=Tue, 08 Sep 2026 12:03:35 GMT; Max-Age=604800; HttpOnly; SameSite=lax
-Date: Tue, 01 Sep 2026 12:03:35 GMT
-Connection: keep-alive
-Keep-Alive: timeout=5
-Transfer-Encoding: chunked
-

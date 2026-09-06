@@ -1,1 +1,0 @@
-http://localhost:8000/np/api/payment-return/esewa?cart_id=cart_01M1E54FKB2V7DSR29HEP23WRV&status=success?data=eyJzdGF0dXMiOiJDT01QTEVURSIsInRyYW5zYWN0aW9uX3V1aWQiOiJjYXJ0LTAxTTFFNTRGS0IyVjdEU1IyOUhFUDIzV1JWLTE3ODgyNjAwMDk2ODcifQ==
