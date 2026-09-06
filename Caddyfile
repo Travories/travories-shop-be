@@ -1,0 +1,8 @@
+# Reverse proxy + automatic HTTPS (Let's Encrypt) for the Medusa backend.
+# Replace api.yourdomain.com with the subdomain whose A-record points at this VPS.
+# Caddy obtains and renews the TLS certificate automatically — nothing else to do,
+# as long as ports 80 and 443 are open and DNS resolves to this server.
+api.yourdomain.com {
+	reverse_proxy backend:9000
+}
+
