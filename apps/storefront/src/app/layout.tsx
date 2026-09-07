@@ -6,6 +6,7 @@ import {
 } from "@lib/seo"
 import { Metadata } from "next"
 import { Playfair_Display, Poppins } from "next/font/google"
+import SmoothScroll from "@modules/common/components/smooth-scroll"
 import "styles/globals.css"
 
 // Travories house pairing: Poppins carries body and UI, Playfair is reserved
@@ -38,6 +39,7 @@ export default function RootLayout(props: { children: React.ReactNode }) {
         {/* Site-wide graph. Page-level schema (Product, CollectionPage,
             BreadcrumbList) is emitted by the route that owns it. */}
         <JsonLd data={[organizationSchema(), websiteSchema()]} id="site" />
+        <SmoothScroll />
         <main className="relative">{props.children}</main>
       </body>
     </html>

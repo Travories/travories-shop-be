@@ -6,6 +6,9 @@ export type GiftFinderResult = {
   count: number
   facets: { recipient?: string; occasion?: string }
   unknown_facet?: boolean
+  // True when no product matched every facet and the results were relaxed to
+  // the closest gifts (any facet), ranked by how many facets each matches.
+  relaxed?: boolean
 }
 
 export const findGifts = async (params: {

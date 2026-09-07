@@ -145,15 +145,26 @@ export default async function GiftFinderPage(props: Props) {
   let products: HttpTypes.StoreProduct[] = []
 
   if (hasFacet) {
-    products = result?.product_ids.length
-      ? await listProducts({
-          countryCode,
-          queryParams: { id: result.product_ids, limit: 100 },
-        }).then(({ response }) => response.products)
-      : []
+    const ids = result?.product_ids ?? []
+    if (ids.length) {
+      const fetched = await listProducts({
+        countryCode,
+        queryParams: { id: ids, limit: 100 },
+      }).then(({ response }) => response.products)
+
+      // The products endpoint does not preserve the id order, but that order
+      // now encodes closeness when the result was relaxed - keep it.
+      const rank = new Map(ids.map((id, i) => [id, i]))
+      products = fetched.sort(
+        (a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)
+      )
+    }
   } else if (band) {
     products = giftCatalogue
   }
+
+  // Only a genuine two-facet miss relaxes; flag it once there are results to show.
+  const relaxed = Boolean(result?.relaxed)
 
   // Budget is applied here rather than in the API because the price depends on
   // the region the shopper is browsing in.
@@ -264,15 +275,33 @@ export default async function GiftFinderPage(props: Props) {
             />
           ) : (
             <>
-              <div className="flex items-baseline justify-between mb-6">
-                <h2 className="font-playfair text-[24px] text-brand-heading">
-                  {products.length}{" "}
-                  {products.length === 1 ? "match" : "matches"}
-                </h2>
-                {band && (
-                  <span className="text-small-regular text-ui-fg-muted">
-                    {band.label}
-                  </span>
+              <div className="mb-6">
+                <div className="flex items-baseline justify-between">
+                  <h2 className="font-playfair text-[24px] text-brand-heading">
+                    {products.length}{" "}
+                    {relaxed
+                      ? products.length === 1
+                        ? "closest match"
+                        : "closest matches"
+                      : products.length === 1
+                        ? "match"
+                        : "matches"}
+                  </h2>
+                  {band && (
+                    <span className="text-small-regular text-ui-fg-muted">
+                      {band.label}
+                    </span>
+                  )}
+                </div>
+
+                {relaxed && products.length > 0 && (
+                  <p
+                    className="text-small-regular text-ui-fg-muted mt-2"
+                    data-testid="finder-relaxed-note"
+                  >
+                    No gift matches every answer, so here are the closest - the
+                    ones matching the most.
+                  </p>
                 )}
               </div>
 

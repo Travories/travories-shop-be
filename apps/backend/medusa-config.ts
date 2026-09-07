@@ -84,6 +84,9 @@ module.exports = defineConfig({
     {
       resolve: "./src/modules/souvenir",
     },
+    {
+      resolve: "./src/modules/marketplace",
+    },
     ...(s3Configured ? [fileModule] : []),
     ...(esewaConfigured ? [paymentModule] : []),
   ],
