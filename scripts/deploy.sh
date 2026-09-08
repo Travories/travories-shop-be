@@ -33,6 +33,12 @@ fi
 # shellcheck disable=SC1091
 set -a; . ./.env; set +a
 
+# This script produces production Docker images. The shared .env is also used
+# for local backend development and may contain NODE_ENV=development; prevent
+# that value from leaking into Next's build-time environment. A non-standard
+# NODE_ENV makes Next's generated /404 page fail during prerendering.
+export NODE_ENV=production
+
 wait_for_backend() {
   echo "==> waiting for the backend to report healthy"
   for _ in $(seq 1 60); do

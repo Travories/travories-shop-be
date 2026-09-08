@@ -1,12 +1,11 @@
 import { ArrowUpRightMini } from "@medusajs/icons"
 import { Text } from "@modules/common/components/ui"
 import { buildPrivateMetadata } from "@lib/seo"
-import { Metadata } from "next"
+import type { Metadata } from "next"
 import Link from "next/link"
 
 export const metadata: Metadata = buildPrivateMetadata({
   title: "Page not found",
-  description: "The page you tried to access does not exist.",
 })
 
 export default function NotFound() {

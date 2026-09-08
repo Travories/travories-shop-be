@@ -4,7 +4,7 @@ import {
   organizationSchema,
   websiteSchema,
 } from "@lib/seo"
-import { Metadata } from "next"
+import type { Metadata } from "next"
 import { Playfair_Display, Poppins } from "next/font/google"
 import "styles/globals.css"
 
