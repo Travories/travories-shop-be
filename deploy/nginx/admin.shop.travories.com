@@ -1,16 +1,20 @@
-# Medusa backend -> PORT_BE (7342).
+# Admin dashboard -> PORT_BE (7342), the same backend as api.shop.travories.com.
 #
-# One process serves everything, routed by path:
-#   /store, /admin, /auth  -> API
-#   /app                   -> admin dashboard
-# The dashboard has its own domain (admin.shop.travories.com) pointing at this
-# same backend, so this host is left as the plain API entry point.
+# The dashboard is not a separate process — Medusa serves it at /app on the
+# backend. This domain proxies the whole backend, so the dashboard's own API
+# calls (/admin, /auth) stay same-origin: no CORS, no cross-site cookies.
+# That works because medusa-config.ts pins admin.backendUrl to "/".
 
 server {
-    server_name api.shop.travories.com;
+    server_name admin.shop.travories.com;
 
     # Admin media uploads pass through this host.
     client_max_body_size 100m;
+
+    # The dashboard lives at /app; send the bare domain there.
+    location = / {
+        return 302 /app;
+    }
 
     location / {
         proxy_pass http://localhost:7342;

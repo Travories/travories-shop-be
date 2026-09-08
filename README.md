@@ -135,25 +135,36 @@ Both apps ship as Docker images built from this repo. Deploy the backend first �
 
 ### Topology
 
-| Public domain | Host port | Container |
+| Public domain | Host port | Serves |
 |---|---|---|
 | `shop.travories.com` | `7341` (`PORT_FE`) | storefront (`:8000`) |
-| `api.shop.travories.com` | `7342` (`PORT_BE`) | backend (`:9000`) — API **and** admin |
+| `api.shop.travories.com` | `7342` (`PORT_BE`) | backend API (`:9000`) |
+| `admin.shop.travories.com` | `7342` (`PORT_BE`) | admin dashboard — same backend, `/` → `/app` |
 
-Two apps, two ports, two domains. The admin dashboard is **not a separate
-process**: Medusa serves it from the same server as the API, routed by path —
-`/store`, `/admin` and `/auth` are the API, `/app` is the dashboard. So there is
-no `admin.` domain and no third port; the dashboard is at
-`https://api.shop.travories.com/app` (the bare domain redirects there).
+Two apps, **two ports**, three domains. The admin dashboard is not a separate
+process: Medusa serves it from the same server as the API, routed by path —
+`/store`, `/admin` and `/auth` are the API, `/app` is the dashboard. `api.` and
+`admin.` are two front doors onto the same port, which is why no third port
+exists.
+
+`medusa-config.ts` pins `admin.backendUrl` to `"/"`. That value is baked into
+the dashboard bundle at build time, and leaving it at the default
+(`MEDUSA_BACKEND_URL`, i.e. `api.shop.travories.com`) would make every admin API
+call cross-origin when the dashboard is reached at `admin.shop.travories.com` —
+CORS preflights plus cross-site cookies on login. With `"/"` the dashboard calls
+whichever host served it, so both domains work with no CORS involved.
+`MEDUSA_BACKEND_URL` is still used, separately, by `src/lib/store-media.ts` to
+build absolute media URLs.
 
 nginx runs **on the host**, not in `compose.yaml` — one file per domain in
 [`deploy/nginx/`](./deploy/nginx), each just pointing the domain at its port:
 
 ```bash
 sudo cp deploy/nginx/shop.travories.com \
-        deploy/nginx/api.shop.travories.com  /etc/nginx/sites-available/
+        deploy/nginx/api.shop.travories.com \
+        deploy/nginx/admin.shop.travories.com  /etc/nginx/sites-available/
 
-for d in shop.travories.com api.shop.travories.com; do
+for d in shop.travories.com api.shop.travories.com admin.shop.travories.com; do
   sudo ln -sf /etc/nginx/sites-available/$d /etc/nginx/sites-enabled/
 done
 
@@ -178,7 +189,7 @@ nano .env
 
 ./scripts/deploy.sh backend      # phase 1: build + start, wait for healthcheck
 docker compose exec backend npx medusa user -e you@example.com -p yourpassword
-# https://api.shop.travories.com/app -> Settings -> Publishable API Keys -> pk_... into .env
+# https://admin.shop.travories.com -> Settings -> Publishable API Keys -> pk_... into .env
 ./scripts/deploy.sh storefront   # phase 2: build against the live backend
 ```
 

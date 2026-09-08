@@ -89,6 +89,18 @@ module.exports = defineConfig({
       cookieSecret: process.env.COOKIE_SECRET,
     }
   },
+  admin: {
+    // The dashboard bundle bakes this in as __BACKEND_URL__ at build time.
+    // Defaulting it to MEDUSA_BACKEND_URL would pin every admin API call to
+    // api.shop.travories.com, making the dashboard cross-origin when it is
+    // reached at admin.shop.travories.com — CORS preflights plus cross-site
+    // cookies on login. "/" keeps it same-origin with whichever host serves
+    // it, so both hostnames work with no CORS involved.
+    //
+    // MEDUSA_BACKEND_URL is deliberately left alone: src/lib/store-media.ts
+    // still uses it to build absolute media URLs for the storefront.
+    backendUrl: "/",
+  },
   modules: [
     {
       resolve: "./src/modules/souvenir",
