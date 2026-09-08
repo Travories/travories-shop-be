@@ -1,7 +1,16 @@
+import path from "path"
 import { loadEnv, defineConfig } from "@medusajs/framework/utils"
 import { mediaEnv } from "./src/lib/media-env"
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+// This monorepo keeps a SINGLE .env at the repo root — there is no
+// apps/backend/.env. Load from there rather than from the cwd (which is
+// apps/backend when turbo runs the dev/build task).
+//
+// In the built bundle (.medusa/server) that path resolves to a directory with
+// no .env, which is a harmless no-op: Docker injects the same variables via
+// compose `env_file` instead. dotenv never overrides an already-set variable,
+// so real process env always wins.
+loadEnv(process.env.NODE_ENV || 'development', path.resolve(__dirname, "../.."))
 
 // Registering the file module REPLACES Medusa's default local-file provider, so
 // admin uploads would start failing the moment S3 credentials are wrong or

@@ -1,3 +1,19 @@
+# Runs the two apps of this repo — nothing else.
+#
+# PostgreSQL, Redis and nginx (TLS + domain routing) are EXTERNAL and are not
+# managed here. Point DATABASE_URL / REDIS_URL at them in `.env`; anything
+# living on the Docker host is reachable as `host.docker.internal` thanks to
+# the extra_hosts entries below.
+#
+# Both services read the single root `.env` — copy `.env.example` to `.env`
+# first. NEXT_PUBLIC_* values are baked into the storefront bundle at build
+# time, so they are passed as build args as well as runtime env.
+#
+# ORDERING: the storefront BUILD renders pages against a live backend, so the
+# backend must be up and reachable at NEXT_PUBLIC_MEDUSA_BACKEND_URL before the
+# storefront image is built. `depends_on` only orders startup, not builds —
+# use ./scripts/deploy.sh, which sequences the two phases correctly.
+
 services:
   backend:
     build:
@@ -9,6 +25,26 @@ services:
       - .env
     environment:
       NODE_ENV: production
+    ports:
+      # Host ${PORT_BE} serves BOTH the Store/Admin API and the admin
+      # dashboard at /app — nginx fans api.* and admin.* onto this one port.
+      - "${PORT_BE:-7342}:9000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # node:20-slim ships no curl/wget; global fetch is available on Node 20.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      # Migrations run before the server boots, so allow a slow first start.
+      start_period: 90s
 
   storefront:
     build:
@@ -17,22 +53,40 @@ services:
       args:
         - NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=${NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY:-}
         - NEXT_PUBLIC_MEDUSA_BACKEND_URL=${NEXT_PUBLIC_MEDUSA_BACKEND_URL:-}
+        - NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL:-}
+        - NEXT_PUBLIC_DEFAULT_REGION=${NEXT_PUBLIC_DEFAULT_REGION:-np}
+        - NEXT_PUBLIC_MEDIA_HOSTNAME=${NEXT_PUBLIC_MEDIA_HOSTNAME:-}
+        - NEXT_PUBLIC_STRIPE_KEY=${NEXT_PUBLIC_STRIPE_KEY:-}
+        - NEXT_PUBLIC_TWITTER_HANDLE=${NEXT_PUBLIC_TWITTER_HANDLE:-}
+        - NEXT_PUBLIC_FACEBOOK_URL=${NEXT_PUBLIC_FACEBOOK_URL:-}
+        - NEXT_PUBLIC_INSTAGRAM_URL=${NEXT_PUBLIC_INSTAGRAM_URL:-}
+        - NEXT_PUBLIC_TWITTER_URL=${NEXT_PUBLIC_TWITTER_URL:-}
+        - NEXT_PUBLIC_YOUTUBE_URL=${NEXT_PUBLIC_YOUTUBE_URL:-}
+        - NEXT_PUBLIC_FACEBOOK_APP_ID=${NEXT_PUBLIC_FACEBOOK_APP_ID:-}
+        - NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION=${NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:-}
+        - NEXT_PUBLIC_PINTEREST_SITE_VERIFICATION=${NEXT_PUBLIC_PINTEREST_SITE_VERIFICATION:-}
     container_name: medusashop-storefront
     restart: unless-stopped
     env_file:
       - .env
     environment:
       NODE_ENV: production
-
-  nginx:
-    image: nginx:alpine
-    container_name: medusashop-nginx
-    restart: unless-stopped
     ports:
-      - "${PORT_FE:-80}:80"
-      - "${PORT_BE:-9000}:9000"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - "${PORT_FE:-7341}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      - backend
-      - storefront
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

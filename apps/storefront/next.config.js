@@ -1,4 +1,13 @@
 const path = require("path")
+const { loadEnvConfig } = require("@next/env")
+
+// This monorepo keeps a SINGLE .env at the repo root — there is no
+// apps/storefront/.env.local. Next only auto-loads env files from the project
+// directory, so load the root one here, before anything reads process.env.
+// Values already present in the environment (Vercel, docker `env_file`,
+// `--build-arg`) are not overwritten.
+loadEnvConfig(path.join(__dirname, "../../"))
+
 const checkEnvVariables = require("./check-env-variables")
 
 checkEnvVariables()

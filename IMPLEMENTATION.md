@@ -99,7 +99,7 @@ S3_ACCESS_KEY=...
 S3_SECRET_KEY=...
 ```
 
-Document these in `.env.template` too — never commit real values.
+Document these in the root `.env.example` too — never commit real values.
 
 ### Step 2 — register the module
 
