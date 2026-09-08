@@ -7,10 +7,15 @@
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS builder
 
-# Toolchain for native deps (sharp, etc.) that get compiled during install.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
+# No build toolchain here on purpose. Nothing in the lockfile compiles from
+# source on linux/glibc: sharp, @swc/core, esbuild, unrs-resolver and
+# msgpackr-extract all resolve to prebuilt x64-gnu / arm64-gnu binaries, and
+# apps/storefront/Dockerfile already runs the same `npm ci` against the same
+# lockfile with no compiler at all. If a future dependency does need node-gyp,
+# the install fails loudly and this comes back:
+#   RUN apt-get update \
+#     && apt-get install -y --no-install-recommends python3 make g++ \
+#     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -47,4 +52,10 @@ USER node
 EXPOSE 9000
 
 # Run pending migrations against the external DB, then boot Medusa.
-CMD ["sh", "-c", "npx medusa db:migrate && npx medusa start"]
+#
+# `exec` on the second command matters: without it `sh` stays PID 1, and a
+# POSIX shell waiting on a child does not forward signals to it. `docker stop`
+# would SIGTERM the shell, Medusa would never hear it, and 10s later the
+# container would be SIGKILLed mid-request. exec replaces the shell so Medusa
+# receives the signal itself and shuts down gracefully.
+CMD ["sh", "-c", "npx medusa db:migrate && exec npx medusa start"]
