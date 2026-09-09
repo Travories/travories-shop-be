@@ -10,7 +10,8 @@ FROM node:20-slim AS builder
 # Toolchain for native deps (sharp, etc.) that get compiled during install.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g npm@11.4.2
 
 WORKDIR /app
 
@@ -19,6 +20,7 @@ WORKDIR /app
 COPY package.json package-lock.json turbo.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/storefront/package.json apps/storefront/package.json
+COPY apps/vendor-dashboard/package.json apps/vendor-dashboard/package.json
 
 RUN npm ci
 

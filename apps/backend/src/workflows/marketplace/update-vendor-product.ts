@@ -6,6 +6,7 @@ import { updateProductsWorkflow } from "@medusajs/medusa/core-flows"
 import { UpdateProductWorkflowInputDTO } from "@medusajs/framework/types"
 
 import { validateProductOwnershipStep } from "./steps/validate-product-ownership-step"
+import { validateSellerActiveStep } from "./steps/validate-seller-active-step"
 
 export type UpdateVendorProductWorkflowInput = {
   seller_id: string
@@ -19,6 +20,7 @@ export type UpdateVendorProductWorkflowInput = {
 export const updateVendorProductWorkflow = createWorkflow(
   "update-vendor-product",
   function (input: UpdateVendorProductWorkflowInput) {
+    validateSellerActiveStep({ seller_id: input.seller_id })
     validateProductOwnershipStep({
       seller_id: input.seller_id,
       product_id: input.product_id,

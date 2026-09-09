@@ -45,6 +45,29 @@ const esewaConfigured = Boolean(
     process.env.ESEWA_STOREFRONT_BASE_URL
 )
 
+const redisUrl = process.env.REDIS_URL
+
+const redisModules = redisUrl
+  ? [
+      {
+        resolve: "@medusajs/medusa/event-bus-redis",
+        options: {
+          redisUrl,
+          jobOptions: {
+            removeOnComplete: { age: 3600, count: 1000 },
+            removeOnFail: { age: 86400, count: 5000 },
+          },
+        },
+      },
+      {
+        resolve: "@medusajs/medusa/workflow-engine-redis",
+        options: {
+          redis: { redisUrl },
+        },
+      },
+    ]
+  : []
+
 const paymentModule = {
   resolve: "@medusajs/payment",
   options: {
@@ -89,5 +112,6 @@ module.exports = defineConfig({
     },
     ...(s3Configured ? [fileModule] : []),
     ...(esewaConfigured ? [paymentModule] : []),
+    ...redisModules,
   ],
 })

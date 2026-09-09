@@ -1,4 +1,5 @@
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk"
+import { MedusaError } from "@medusajs/framework/utils"
 
 import { MARKETPLACE_MODULE } from "../../../modules/marketplace"
 import MarketplaceModuleService from "../../../modules/marketplace/service"
@@ -20,8 +21,15 @@ export const updatePayoutStep = createStep(
       container.resolve<MarketplaceModuleService>(MARKETPLACE_MODULE)
 
     const previous = await service.retrievePayout(input.id, {
-      select: ["id", "status", "reference"],
+      select: ["id", "status", "reference", "reversed_amount"],
     })
+
+    if (input.status && Number(previous.reversed_amount) > 0) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_ALLOWED,
+        "A reversed payout cannot be marked pending or paid"
+      )
+    }
 
     const payout = await service.updatePayouts(input)
 

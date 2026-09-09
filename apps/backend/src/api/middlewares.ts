@@ -9,6 +9,7 @@ import { createFindParams } from "@medusajs/medusa/api/utils/validators"
 import { UpdatePayoutSchema } from "./admin/payouts/validators"
 import { UpdateSellerSchema } from "./admin/sellers/validators"
 import { CreateSellerSchema } from "./vendor/sellers/validators"
+import { CreateVendorFulfillmentSchema } from "./vendor/orders/validators"
 import {
   CreateVendorProductSchema,
   UpdateVendorProductSchema,
@@ -70,6 +71,24 @@ export default defineMiddlewares({
       method: "GET",
       middlewares: [authenticate("seller", ["session", "bearer"])],
     },
+    {
+      matcher: "/vendor/orders",
+      method: "GET",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
+    {
+      matcher: "/vendor/orders/:id/fulfillments",
+      method: "POST",
+      middlewares: [
+        authenticate("seller", ["session", "bearer"]),
+        validateAndTransformBody(CreateVendorFulfillmentSchema),
+      ],
+    },
+    {
+      matcher: "/vendor/orders/:id/fulfillments/:fulfillment_id/deliver",
+      method: "POST",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
     // Super-admin: /admin/* is already authenticated by Medusa; only add
     // validation here.
     {
@@ -105,6 +124,7 @@ export default defineMiddlewares({
           defaults: [
             "id",
             "amount",
+            "reversed_amount",
             "currency_code",
             "status",
             "order_id",
@@ -112,6 +132,7 @@ export default defineMiddlewares({
             "created_at",
             "seller.id",
             "seller.name",
+            "adjustments.*",
           ],
           isList: true,
           defaultLimit: 20,
