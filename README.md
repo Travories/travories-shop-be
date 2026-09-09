@@ -14,7 +14,7 @@ Medusashop is a monorepo with two apps:
 | App | Package | Stack | Runs on |
 |-----|---------|-------|---------|
 | **Backend** | `@dtc/backend` | Medusa v2, Node 20+, PostgreSQL, Redis | Self-hosted (Docker) |
-| **Storefront** | `@dtc/storefront` | Next.js (App Router), React 19, Tailwind | Vercel |
+| **Storefront** | `@dtc/storefront` | Next.js (App Router), React 19, Tailwind | Self-hosted (Docker) or Vercel |
 
 The backend serves the Store/Admin APIs and the admin dashboard (`/app`). The storefront is a server-rendered Next.js app that talks to the backend over the Store API using a publishable key.
 
@@ -28,8 +28,11 @@ The backend serves the Store/Admin APIs and the admin dashboard (`/app`). The st
 
 - [Node.js](https://nodejs.org/) 20.19+ (or 22.12+)
 - [npm](https://www.npmjs.com/) 11+ (this repo uses npm — see `packageManager` in `package.json`; do not introduce a second lockfile)
-- [PostgreSQL](https://www.postgresql.org/) 15+
-- [Docker](https://www.docker.com/) (for local Redis, and for the production backend deploy)
+- [PostgreSQL](https://www.postgresql.org/) 15+ — **external**, not managed by this repo
+- [Redis](https://redis.io/) — **external**, not managed by this repo
+- [Docker](https://www.docker.com/) (only for the containerised deploy of the two apps)
+
+> PostgreSQL, Redis, and the reverse proxy / TLS terminator all live **outside** this repo. `compose.yaml` builds and runs the backend and the storefront, and nothing else — point `DATABASE_URL` and `REDIS_URL` at wherever those services actually run.
 
 ## Local development
 
@@ -41,13 +44,13 @@ cd medusashop
 npm install
 ```
 
-**2. Configure the backend:**
+**2. Configure the environment** — one file for both apps:
 
 ```bash
-cp apps/backend/.env.template apps/backend/.env
+cp .env.example .env
 ```
 
-Edit `apps/backend/.env` and set at least:
+There is a **single `.env` at the repo root**; the backend and storefront both read it (there are no per-app `.env` files). Set at least:
 
 ```bash
 DATABASE_URL=postgres://postgres:@localhost:5432/medusa-backend
@@ -56,13 +59,9 @@ JWT_SECRET=supersecret
 COOKIE_SECRET=supersecret
 ```
 
-**3. Start Redis** (Postgres is expected to run on your host):
+Make sure your external PostgreSQL and Redis are running and reachable at those URLs.
 
-```bash
-docker compose up -d redis
-```
-
-**4. Run migrations and create an admin user:**
+**3. Run migrations and create an admin user:**
 
 ```bash
 cd apps/backend
@@ -72,20 +71,16 @@ cd ../..
 npm run backend:seed        # optional: seed demo catalogue data
 ```
 
-**5. Configure the storefront:**
-
-```bash
-cp apps/storefront/.env.template apps/storefront/.env.local
-```
+**4. Add a publishable key:**
 
 Start the backend, open the admin at `http://localhost:9000/app`, and grab a key from
-**Settings → Publishable API Keys**. Put it in `apps/storefront/.env.local`:
+**Settings → Publishable API Keys**. Put it in the root `.env`:
 
 ```bash
 NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_...
 ```
 
-**6. Run both apps** (from the repo root):
+**5. Run both apps** (from the repo root):
 
 ```bash
 npm run dev
@@ -102,76 +97,113 @@ Run just one app with `npm run backend:dev` or `npm run storefront:dev`.
 .
 ├── apps/
 │   ├── backend/        # @dtc/backend — Medusa v2 app (API, admin, custom modules)
-│   └── storefront/     # @dtc/storefront — Next.js storefront (deployed to Vercel)
-├── compose.yaml        # Production VPS stack: postgres + redis + backend + caddy
+│   └── storefront/     # @dtc/storefront — Next.js storefront
+├── deploy/nginx/       # One host nginx file per public domain (external)
+├── scripts/deploy.sh   # Two-phase deploy: backend first, then storefront
+├── .env                # Single env file for BOTH apps (gitignored)
+├── .env.example        # Template for the above — the full list of variables
+├── compose.yaml        # Runs just the two apps: backend + storefront
 ├── Dockerfile          # Multi-stage build for the Medusa backend
-├── Caddyfile           # Reverse proxy + automatic HTTPS for the backend
 ├── turbo.json          # Turborepo task graph
 └── AGENTS.md           # Contributor guide: structure, commands, conventions
 ```
 
 ## Environment variables
 
-### Storefront (`apps/storefront/.env.local`)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from the backend | — |
-| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | URL of the Medusa backend | `http://localhost:9000` |
-| `NEXT_PUBLIC_DEFAULT_REGION` | Default region country code | `np` |
-| `NEXT_PUBLIC_BASE_URL` | Base URL of the storefront | `http://localhost:8000` |
-| `NEXT_PUBLIC_STRIPE_KEY` | Stripe publishable key (optional) | — |
-
-### Backend (`apps/backend/.env`)
+All variables for **both apps** live in a single `.env` at the repo root — copy it from [`.env.example`](./.env.example), which documents every supported variable with defaults. The backend loads it via `loadEnv` in `apps/backend/medusa-config.ts`; the storefront loads it via `loadEnvConfig` in `apps/storefront/next.config.js`. Do not create `apps/backend/.env` or `apps/storefront/.env.local`.
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
+| `DATABASE_URL` | External PostgreSQL connection string |
+| `REDIS_URL` | External Redis connection string |
 | `JWT_SECRET` / `COOKIE_SECRET` | Session/auth secrets |
 | `STORE_CORS` | Allowed storefront origins (comma-separated) |
 | `ADMIN_CORS` / `AUTH_CORS` | Allowed admin/auth origins |
 | `S3_*` | Optional S3-compatible media storage (leave blank for local files) |
 | `ESEWA_*` | eSewa ePay v2 checkout config (`EPAYTEST` = sandbox) |
+| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from the backend — **required** |
+| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | URL of the Medusa backend |
+| `NEXT_PUBLIC_BASE_URL` | Base URL of the storefront |
+| `NEXT_PUBLIC_DEFAULT_REGION` | Default region country code (`np`) |
+| `PORT_FE` / `PORT_BE` | Host ports published by `compose.yaml` |
 
-See each app's `.env.template` for the full list.
+Every `NEXT_PUBLIC_*` value is baked into the client bundle at **build** time, so changing one requires a storefront rebuild (`compose.yaml` also passes them as build args).
 
 ## Deployment
 
-The backend is **self-hosted with Docker Compose**; the storefront is **deployed on Vercel**. Deploy the backend first — the storefront's build fetches from it.
+Both apps ship as Docker images built from this repo. Deploy the backend first — the storefront's build pre-renders pages by fetching from it.
 
-### Backend — VPS (Docker Compose)
+### Topology
 
-The root `compose.yaml` runs the full stack: **Caddy (auto-HTTPS) → backend → PostgreSQL + Redis**, with persistent volumes.
+| Public domain | Host port | Serves |
+|---|---|---|
+| `shop.travories.com` | `7341` (`PORT_FE`) | storefront (`:8000`) |
+| `api.shop.travories.com` | `7342` (`PORT_BE`) | backend API (`:9000`) |
+| `admin.shop.travories.com` | `7342` (`PORT_BE`) | admin dashboard — same backend, `/` → `/app` |
 
-1. **DNS:** point an A-record (e.g. `api.yourdomain.com`) at the VPS IP, and open ports **80** and **443**.
-2. **Domain:** replace `api.yourdomain.com` in `Caddyfile` with your subdomain.
-3. **Environment:** create the root `.env` from the template and fill it in (secrets, `DATABASE_URL`, and CORS — `STORE_CORS` = your Vercel URL, `ADMIN_CORS`/`AUTH_CORS` = your backend domain):
+Two apps, **two ports**, three domains. The admin dashboard is not a separate
+process: Medusa serves it from the same server as the API, routed by path —
+`/store`, `/admin` and `/auth` are the API, `/app` is the dashboard. `api.` and
+`admin.` are two front doors onto the same port, which is why no third port
+exists.
 
-   ```bash
-   cp .env.template .env
-   openssl rand -base64 32   # run twice — for JWT_SECRET and COOKIE_SECRET
-   nano .env
-   ```
+`medusa-config.ts` pins `admin.backendUrl` to `"/"`. That value is baked into
+the dashboard bundle at build time, and leaving it at the default
+(`MEDUSA_BACKEND_URL`, i.e. `api.shop.travories.com`) would make every admin API
+call cross-origin when the dashboard is reached at `admin.shop.travories.com` —
+CORS preflights plus cross-site cookies on login. With `"/"` the dashboard calls
+whichever host served it, so both domains work with no CORS involved.
+`MEDUSA_BACKEND_URL` is still used, separately, by `src/lib/store-media.ts` to
+build absolute media URLs.
 
-4. **Launch** (migrations run automatically on boot):
+nginx runs **on the host**, not in `compose.yaml` — one file per domain in
+[`deploy/nginx/`](./deploy/nginx), each just pointing the domain at its port:
 
-   ```bash
-   docker compose up -d --build
-   docker compose logs -f backend        # wait for "Server is ready"
-   ```
+```bash
+sudo cp deploy/nginx/shop.travories.com \
+        deploy/nginx/api.shop.travories.com \
+        deploy/nginx/admin.shop.travories.com  /etc/nginx/sites-available/
 
-5. **Create an admin user** (and optionally seed data):
+for d in shop.travories.com api.shop.travories.com admin.shop.travories.com; do
+  sudo ln -sf /etc/nginx/sites-available/$d /etc/nginx/sites-enabled/
+done
 
-   ```bash
-   docker compose exec backend npx medusa user -e you@email.com -p yourpassword
-   ```
+sudo nginx -t && sudo systemctl reload nginx
+```
 
-6. **Publishable key:** log into `https://api.yourdomain.com/app` → **Settings → Publishable API Keys** → copy the new `pk_...`.
+They are plain `listen 80` proxies — add TLS however you normally do it.
 
-### Storefront — Vercel
+### Deploying the apps
 
-Set these environment variables in the Vercel project, then deploy:
+> **Do not run `docker compose up --build` on its own.** `depends_on` orders
+> container *startup*, not image *builds* — compose builds both services in
+> parallel. But `next build` pre-renders pages by calling the Store API over
+> `NEXT_PUBLIC_MEDUSA_BACKEND_URL` (`sitemap.ts` has no fallback), so the
+> storefront image cannot be built until the backend is live. Use the script,
+> which sequences the two phases:
+
+```bash
+cp .env.example .env
+openssl rand -base64 32   # run for JWT_SECRET, COOKIE_SECRET, AUTH_MFA_ENCRYPTION_KEY
+nano .env
+
+./scripts/deploy.sh backend      # phase 1: build + start, wait for healthcheck
+docker compose exec backend npx medusa user -e you@example.com -p yourpassword
+# https://admin.shop.travories.com -> Settings -> Publishable API Keys -> pk_... into .env
+./scripts/deploy.sh storefront   # phase 2: build against the live backend
+```
+
+Afterwards `./scripts/deploy.sh` (no argument) redeploys both in order. Because
+every `NEXT_PUBLIC_*` value is baked in at build time, changing one in `.env`
+requires re-running phase 2 — a restart is not enough.
+
+Ordering constraints in short:
+
+1. External PostgreSQL + Redis reachable → 2. nginx serving `api.shop.travories.com` → 3. backend (runs migrations on boot, must report healthy) → 4. publishable key exists → 5. storefront build.
+
+### Storefront — Vercel (alternative)
+
+The storefront can also be deployed to Vercel instead of via compose. Set the root directory to `apps/storefront` and add these environment variables in the Vercel project, then deploy:
 
 - `NEXT_PUBLIC_MEDUSA_BACKEND_URL` = `https://api.yourdomain.com`
 - `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` = the `pk_...` from the step above
@@ -182,4 +214,3 @@ The storefront pre-renders category/collection/product pages at build time, so t
 
 - [Medusa Documentation](https://docs.medusajs.com)
 - [Next.js Documentation](https://nextjs.org/docs)
-- [Caddy Documentation](https://caddyserver.com/docs/)

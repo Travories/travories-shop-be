@@ -35,7 +35,7 @@ It does **not** yet cover:
 - [apps/backend/src/modules/payment-nepal/lib/amount.ts](/Users/madhukunwar/Desktop/medusashop/apps/backend/src/modules/payment-nepal/lib/amount.ts)
   NPR amount helpers already present in the repo and reused by the provider.
 
-- [apps/backend/.env.template](/Users/madhukunwar/Desktop/medusashop/apps/backend/.env.template)
+- [.env.example](./.env.example) — the single root env file (backend + storefront)
   New env vars for eSewa web checkout and placeholders for future SDK/intent work.
 
 - [apps/backend/src/migration-scripts/initial-data-seed.ts](/Users/madhukunwar/Desktop/medusashop/apps/backend/src/migration-scripts/initial-data-seed.ts)

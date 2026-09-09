@@ -1,7 +1,16 @@
+import path from "path"
 import { loadEnv, defineConfig } from "@medusajs/framework/utils"
 import { mediaEnv } from "./src/lib/media-env"
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+// This monorepo keeps a SINGLE .env at the repo root — there is no
+// apps/backend/.env. Load from there rather than from the cwd (which is
+// apps/backend when turbo runs the dev/build task).
+//
+// In the built bundle (.medusa/server) that path resolves to a directory with
+// no .env, which is a harmless no-op: Docker injects the same variables via
+// compose `env_file` instead. dotenv never overrides an already-set variable,
+// so real process env always wins.
+loadEnv(process.env.NODE_ENV || 'development', path.resolve(__dirname, "../.."))
 
 // Registering the file module REPLACES Medusa's default local-file provider, so
 // admin uploads would start failing the moment S3 credentials are wrong or
@@ -102,6 +111,18 @@ module.exports = defineConfig({
       jwtSecret: process.env.JWT_SECRET,
       cookieSecret: process.env.COOKIE_SECRET,
     }
+  },
+  admin: {
+    // The dashboard bundle bakes this in as __BACKEND_URL__ at build time.
+    // Defaulting it to MEDUSA_BACKEND_URL would pin every admin API call to
+    // api.shop.travories.com, making the dashboard cross-origin when it is
+    // reached at admin.shop.travories.com — CORS preflights plus cross-site
+    // cookies on login. "/" keeps it same-origin with whichever host serves
+    // it, so both hostnames work with no CORS involved.
+    //
+    // MEDUSA_BACKEND_URL is deliberately left alone: src/lib/store-media.ts
+    // still uses it to build absolute media URLs for the storefront.
+    backendUrl: "/",
   },
   modules: [
     {

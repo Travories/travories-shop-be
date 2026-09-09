@@ -1,13 +1,10 @@
-import { ArrowUpRightMini } from "@medusajs/icons"
-import { Text } from "@modules/common/components/ui"
-import { buildPrivateMetadata } from "@lib/seo"
-import { Metadata } from "next"
-import Link from "next/link"
+import type { Metadata } from "next"
 
-export const metadata: Metadata = buildPrivateMetadata({
-  title: "Page not found",
+export const metadata: Metadata = {
+  title: "Page not found | Nepal Souvenirs by Travories",
   description: "The page you tried to access does not exist.",
-})
+  robots: { index: false, follow: false },
+}
 
 export default function NotFound() {
   return (
@@ -16,13 +13,9 @@ export default function NotFound() {
       <p className="text-small-regular text-ui-fg-base">
         The page you tried to access does not exist.
       </p>
-      <Link className="flex gap-x-1 items-center group" href="/">
-        <Text className="text-ui-fg-interactive">Go to frontpage</Text>
-        <ArrowUpRightMini
-          className="group-hover:rotate-45 ease-in-out duration-150"
-          color="var(--fg-interactive)"
-        />
-      </Link>
+      <a className="flex gap-x-1 items-center group" href="/">
+        <span className="text-ui-fg-interactive">Go to frontpage →</span>
+      </a>
     </div>
   )
 }

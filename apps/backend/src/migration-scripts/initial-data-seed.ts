@@ -1,6 +1,8 @@
 import { MedusaContainer } from "@medusajs/framework"
+import type { AuthenticationInput } from "@medusajs/framework/types"
 import {
   ContainerRegistrationKeys,
+  MedusaError,
   ModuleRegistrationName,
   Modules,
   ProductStatus,
@@ -18,12 +20,70 @@ import {
   createShippingProfilesWorkflow,
   createStockLocationsWorkflow,
   createStoresWorkflow,
+  updateStoresWorkflow,
   createTaxRegionsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
   linkSalesChannelsToStockLocationWorkflow,
   updatePricePreferencesWorkflow,
   updateRegionsWorkflow,
 } from "@medusajs/medusa/core-flows"
+
+const SEED_VERSION = "travories-v1"
+
+async function ensureAdmin(
+  container: MedusaContainer,
+  logger: { info: (message: string) => void }
+) {
+  const email = process.env.SEED_ADMIN_EMAIL?.trim()
+  const password = process.env.SEED_ADMIN_PASSWORD
+
+  if (!email || !password) {
+    logger.info(
+      "Skipping seed admin: set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD to enable it."
+    )
+    return
+  }
+
+  const userModule = container.resolve(Modules.USER)
+  const authModule = container.resolve(Modules.AUTH)
+  const query = container.resolve(ContainerRegistrationKeys.QUERY)
+  const { data: existingUsers } = await query.graph({
+    entity: "user",
+    fields: ["id", "email"],
+    filters: { email },
+  })
+
+  const user = existingUsers[0] ?? (await userModule.createUsers({ email }))
+  const authInput: AuthenticationInput = { body: { email, password } }
+  let authIdentity = (await authModule.register("emailpass", authInput))
+    .authIdentity
+
+  if (!authIdentity) {
+    const updated = await authModule.updateProvider("emailpass", {
+      email,
+      password,
+      entity_id: email,
+    })
+    authIdentity = updated.authIdentity
+  }
+
+  if (!authIdentity) {
+    throw new MedusaError(
+      MedusaError.Types.INVALID_DATA,
+      `Unable to create or update admin auth identity for ${email}`
+    )
+  }
+
+  await authModule.updateAuthIdentities({
+    id: authIdentity.id,
+    app_metadata: {
+      ...(authIdentity.app_metadata ?? {}),
+      user_id: user.id,
+    },
+  })
+
+  logger.info(`Seed admin is ready: ${email}`)
+}
 
 // Prices are decimal units, not cents. 4500 npr means NPR 4,500.00
 // Every variant carries both npr and usd so a future international region
@@ -47,33 +107,97 @@ export default async function initial_data_seed({
 
   const countries = ["np"]
 
-  logger.info("Seeding store data...")
-  const {
-    result: [defaultSalesChannel],
-  } = await createSalesChannelsWorkflow(container).run({
-    input: {
-      salesChannelsData: [
-        {
-          name: "Default Sales Channel",
-          description: "Primary storefront channel",
-        },
-      ],
-    },
+  const createLinkIfMissing = async (
+    definition: Parameters<typeof link.create>[0]
+  ) => {
+    try {
+      await link.create(definition)
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("Cannot create multiple links")
+      ) {
+        throw error
+      }
+    }
+  }
+
+  await ensureAdmin(container, logger)
+
+  const { data: existingStores } = await query.graph({
+    entity: "store",
+    fields: ["id", "name", "metadata"],
+  })
+  const existingSeedStore = existingStores[0]
+
+  const { data: existingSeedProducts } = await query.graph({
+    entity: "product",
+    fields: ["id", "handle"],
+    filters: { handle: "pashmina-shawl" },
   })
 
-  const {
-    result: [publishableApiKey],
-  } = await createApiKeysWorkflow(container).run({
-    input: {
-      api_keys: [
-        {
-          title: "Default Publishable API Key",
-          type: "publishable",
-          created_by: "",
+  if (
+    existingSeedStore?.metadata?.seed_version === SEED_VERSION ||
+    existingSeedProducts.length > 0
+  ) {
+    if (existingSeedStore?.metadata?.seed_version !== SEED_VERSION) {
+      await updateStoresWorkflow(container).run({
+        input: {
+          selector: { id: existingSeedStore.id },
+          update: {
+            metadata: {
+              ...(existingSeedStore.metadata ?? {}),
+              seed_version: SEED_VERSION,
+            },
+          },
         },
-      ],
-    },
+      })
+    }
+    logger.info("Seed is already complete; nothing to do.")
+    return
+  }
+
+  logger.info("Seeding store data...")
+  const { data: existingSalesChannels } = await query.graph({
+    entity: "sales_channel",
+    fields: ["id", "name"],
+    filters: { name: "Default Sales Channel" },
   })
+  const defaultSalesChannel =
+    existingSalesChannels[0] ??
+    (
+      await createSalesChannelsWorkflow(container).run({
+        input: {
+          salesChannelsData: [
+            {
+              name: "Default Sales Channel",
+              description: "Primary storefront channel",
+            },
+          ],
+        },
+      })
+    ).result[0]
+
+  const { data: existingApiKeys } = await query.graph({
+    entity: "api_key",
+    fields: ["id", "title", "type"],
+    filters: { title: "Default Publishable API Key", type: "publishable" },
+  })
+  const publishableApiKey =
+    existingApiKeys[0] ??
+    (
+      await createApiKeysWorkflow(container).run({
+        input: {
+          api_keys: [
+            {
+              title: "Default Publishable API Key",
+              type: "publishable",
+              created_by: "",
+            },
+          ],
+        },
+      })
+    ).result[0]
 
   await linkSalesChannelsToApiKeyWorkflow(container).run({
     input: {
@@ -82,26 +206,30 @@ export default async function initial_data_seed({
     },
   })
 
-  await createStoresWorkflow(container).run({
-    input: {
-      stores: [
-        {
-          name: "Nepal Souvenirs and Gifts",
-          supported_currencies: [
+  const store =
+    existingSeedStore ??
+    (
+      await createStoresWorkflow(container).run({
+        input: {
+          stores: [
             {
-              currency_code: "npr",
-              is_default: true,
-            },
-            {
-              currency_code: "usd",
-              is_default: false,
+              name: "Nepal Souvenirs and Gifts",
+              supported_currencies: [
+                {
+                  currency_code: "npr",
+                  is_default: true,
+                },
+                {
+                  currency_code: "usd",
+                  is_default: false,
+                },
+              ],
+              default_sales_channel_id: defaultSalesChannel.id,
             },
           ],
-          default_sales_channel_id: defaultSalesChannel.id,
         },
-      ],
-    },
-  })
+      })
+    ).result[0]
 
   logger.info("Seeding region data...")
   const paymentProviders = ["pp_system_default"]
@@ -151,17 +279,31 @@ export default async function initial_data_seed({
   )
 
   logger.info("Seeding tax regions...")
-  await createTaxRegionsWorkflow(container).run({
-    input: countries.map((country_code) => ({
-      country_code,
-      provider_id: "tp_system",
-      default_tax_rate: {
-        name: "Nepal VAT",
-        code: "NP-VAT",
-        rate: 13,
-      },
-    })),
+  const { data: existingTaxRegions } = await query.graph({
+    entity: "tax_region",
+    fields: ["id", "country_code"],
+    filters: { country_code: countries },
   })
+  const missingTaxCountries = countries.filter(
+    (countryCode) =>
+      !existingTaxRegions.some(
+        (taxRegion) => taxRegion.country_code === countryCode
+      )
+  )
+
+  if (missingTaxCountries.length) {
+    await createTaxRegionsWorkflow(container).run({
+      input: missingTaxCountries.map((country_code) => ({
+        country_code,
+        provider_id: "tp_system",
+        default_tax_rate: {
+          name: "Nepal VAT",
+          code: "NP-VAT",
+          rate: 13,
+        },
+      })),
+    })
+  }
   logger.info("Finished seeding tax regions.")
 
   // Nepali retail prices are quoted with VAT already included, so a listed
@@ -199,63 +341,73 @@ export default async function initial_data_seed({
   })
   const stockLocation = stockLocationResult[0]
 
-  await link.create({
+  const providerLink = {
     [Modules.STOCK_LOCATION]: {
       stock_location_id: stockLocation.id,
     },
     [Modules.FULFILLMENT]: {
       fulfillment_provider_id: "manual_manual",
     },
-  })
+  }
+  await createLinkIfMissing(providerLink)
 
   logger.info("Seeding fulfillment data...")
   // The default shipping profile is created by a migration script in core.
   const { data: shippingProfileResult } = await query.graph({
     entity: "shipping_profile",
-    fields: ["id"],
+    fields: ["id", "name", "type"],
   })
   const standardProfile = shippingProfileResult[0]
 
   // Ceramics, glass and framed art need protective packaging and their own
   // shipping rate, so they live on a separate profile from everything else.
-  const { result: fragileProfileResult } = await createShippingProfilesWorkflow(
-    container
-  ).run({
-    input: {
-      data: [
+  const fragileProfile =
+    shippingProfileResult.find((profile) => profile.name === "Fragile") ??
+    (
+      await createShippingProfilesWorkflow(container).run({
+        input: {
+          data: [
+            {
+              name: "Fragile",
+              type: "fragile",
+            },
+          ],
+        },
+      })
+    ).result[0]
+
+  const existingFulfillmentSets =
+    await fulfillmentModuleService.listFulfillmentSets(
+      { name: "Kathmandu Warehouse delivery" },
+      { relations: ["service_zones", "service_zones.geo_zones"] }
+    )
+  const fulfillmentSet =
+    existingFulfillmentSets[0] ??
+    (await fulfillmentModuleService.createFulfillmentSets({
+      name: "Kathmandu Warehouse delivery",
+      type: "shipping",
+      service_zones: [
         {
-          name: "Fragile",
-          type: "fragile",
+          name: "Nepal",
+          geo_zones: [
+            {
+              country_code: "np",
+              type: "country",
+            },
+          ],
         },
       ],
-    },
-  })
-  const fragileProfile = fragileProfileResult[0]
+    }))
 
-  const fulfillmentSet = await fulfillmentModuleService.createFulfillmentSets({
-    name: "Kathmandu Warehouse delivery",
-    type: "shipping",
-    service_zones: [
-      {
-        name: "Nepal",
-        geo_zones: [
-          {
-            country_code: "np",
-            type: "country",
-          },
-        ],
-      },
-    ],
-  })
-
-  await link.create({
+  const fulfillmentSetLink = {
     [Modules.STOCK_LOCATION]: {
       stock_location_id: stockLocation.id,
     },
     [Modules.FULFILLMENT]: {
       fulfillment_set_id: fulfillmentSet.id,
     },
-  })
+  }
+  await createLinkIfMissing(fulfillmentSetLink)
 
   const serviceZoneId = fulfillmentSet.service_zones[0].id
   // `as const` keeps operator narrowed to the literal "eq". Without it the
@@ -1075,4 +1227,18 @@ export default async function initial_data_seed({
   })
 
   logger.info("Finished seeding inventory levels data.")
+
+  await updateStoresWorkflow(container).run({
+    input: {
+      selector: { id: store.id },
+      update: {
+        metadata: {
+          ...(store.metadata ?? {}),
+          seed_version: SEED_VERSION,
+        },
+      },
+    },
+  })
+
+  logger.info(`Finished Travories seed ${SEED_VERSION}.`)
 }

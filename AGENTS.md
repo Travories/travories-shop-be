@@ -149,6 +149,6 @@ claude mcp add --transport http medusa https://docs.medusajs.com/mcp # or agent 
 
 - `apps/backend/.medusa/`, `.next/`, `dist/`, `out/`, `.turbo/` — build output, excluded from the workspace and regenerated.
 - The lockfile (`pnpm-lock.yaml`, `yarn.lock`, `package-lock.json` — whichever this install produced) — never hand-edit or delete; change it only as a side effect of a package manager command.
-- `.env` / `.env.local` — never commit, print, or copy secret values out of them. Edit `.env.template` instead when documenting a new variable.
+- `.env` — the single root env file shared by both apps; never commit, print, or copy secret values out of it. Edit `.env.example` instead when documenting a new variable. Do not add per-app `.env` / `.env.local` files.
 - Existing migrations in `src/modules/*/migrations/` — add a new migration rather than rewriting one that may already have run.
 - Don't run destructive DB commands (drops, `db:migrate --help`-style flags that reset state) against the user's database without explicit confirmation.
