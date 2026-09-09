@@ -1,8 +1,27 @@
 "use client"
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react"
 
-import { api, Payout, Product, Seller, VendorOrder } from "../lib/api"
+import {
+  api,
+  Category,
+  Collection,
+  Payout,
+  Product,
+  ProductDetail,
+  ProductVariantDetail,
+  Seller,
+  Taxon,
+  uploadVendorMedia,
+  VendorOrder,
+} from "../lib/api"
 
 type View = "overview" | "products" | "orders" | "payouts"
 type AuthMode = "login" | "register"
@@ -417,6 +436,726 @@ function Orders({
   )
 }
 
+type OptionDraft = { key: number; title: string; values: string }
+type VariantDraft = {
+  key: number
+  id?: string
+  title: string
+  sku: string
+  price: string
+  manage_inventory: boolean
+  inventory_quantity: string
+  options: Record<string, string>
+}
+type FormState = {
+  title: string
+  subtitle: string
+  handle: string
+  description: string
+  material: string
+  weight: string
+  tags: string
+  thumbnail: string
+  images: string[]
+  category_ids: string[]
+  collection_id: string
+  destination_id: string
+  artisan_id: string
+  options: OptionDraft[]
+  variants: VariantDraft[]
+}
+
+type Taxonomy = {
+  categories: Category[]
+  collections: Collection[]
+  destinations: Taxon[]
+  artisans: Taxon[]
+}
+
+let draftKey = 0
+const nextKey = () => ++draftKey
+
+const blankVariant = (): VariantDraft => ({
+  key: nextKey(),
+  title: "",
+  sku: "",
+  price: "",
+  manage_inventory: false,
+  inventory_quantity: "",
+  options: {},
+})
+
+const emptyForm = (): FormState => ({
+  title: "",
+  subtitle: "",
+  handle: "",
+  description: "",
+  material: "",
+  weight: "",
+  tags: "",
+  thumbnail: "",
+  images: [],
+  category_ids: [],
+  collection_id: "",
+  destination_id: "",
+  artisan_id: "",
+  options: [],
+  variants: [blankVariant()],
+})
+
+const nprPrice = (variant: { prices?: { amount: number; currency_code: string }[] }) =>
+  variant.prices?.find((price) => price.currency_code === "npr")?.amount
+
+const currentStock = (variant: ProductVariantDetail) =>
+  (variant.inventory_items ?? [])
+    .flatMap((item) => item.inventory?.location_levels ?? [])
+    .reduce((sum, level) => sum + (level.stocked_quantity ?? 0), 0)
+
+function detailToForm(detail: ProductDetail): FormState {
+  return {
+    title: detail.title ?? "",
+    subtitle: detail.subtitle ?? "",
+    handle: detail.handle ?? "",
+    description: detail.description ?? "",
+    material: detail.material ?? "",
+    weight: detail.weight != null ? String(detail.weight) : "",
+    tags: (detail.tags ?? []).map((tag) => tag.value).join(", "),
+    thumbnail: detail.thumbnail ?? "",
+    images: (detail.images ?? []).map((image) => image.url),
+    category_ids: (detail.categories ?? []).map((category) => category.id),
+    collection_id: detail.collection?.id ?? "",
+    destination_id: detail.destination?.id ?? "",
+    artisan_id: detail.artisan?.id ?? "",
+    options: (detail.options ?? []).map((option) => ({
+      key: nextKey(),
+      title: option.title,
+      values: (option.values ?? []).map((value) => value.value).join(", "),
+    })),
+    variants:
+      (detail.variants ?? []).length > 0
+        ? (detail.variants ?? []).map((variant) => ({
+            key: nextKey(),
+            id: variant.id,
+            title: variant.title,
+            sku: variant.sku ?? "",
+            price: nprPrice(variant) != null ? String(nprPrice(variant)) : "",
+            manage_inventory: variant.manage_inventory ?? false,
+            inventory_quantity: variant.manage_inventory
+              ? String(currentStock(variant))
+              : "",
+            options: Object.fromEntries(
+              (variant.options ?? [])
+                .filter((option) => option.option?.title)
+                .map((option) => [option.option!.title!, option.value ?? ""])
+            ),
+          }))
+        : [blankVariant()],
+  }
+}
+
+function buildPayload(form: FormState, status: "draft" | "proposed") {
+  const definedOptions = form.options
+    .filter((option) => option.title.trim() && option.values.trim())
+    .map((option) => ({
+      title: option.title.trim(),
+      values: option.values
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    }))
+
+  let variants = form.variants.map((variant) => ({
+    ...(variant.id ? { id: variant.id } : {}),
+    title: variant.title.trim() || "Default",
+    sku: variant.sku.trim() || undefined,
+    prices: variant.price
+      ? [{ currency_code: "npr", amount: Number(variant.price) }]
+      : undefined,
+    manage_inventory: variant.manage_inventory,
+    inventory_quantity:
+      variant.manage_inventory && variant.inventory_quantity
+        ? Number(variant.inventory_quantity)
+        : undefined,
+    options: Object.fromEntries(
+      definedOptions.map((option) => [
+        option.title,
+        variant.options[option.title] ?? "",
+      ])
+    ),
+  }))
+
+  let options = definedOptions
+  // No explicit options: synthesize one from the variant titles so every
+  // variant has a unique option value (Medusa requires option assignments).
+  if (options.length === 0) {
+    options = [
+      {
+        title: "Variant",
+        values: form.variants.map(
+          (variant, index) => variant.title.trim() || `Variant ${index + 1}`
+        ),
+      },
+    ]
+    variants = variants.map((variant, index) => ({
+      ...variant,
+      options: {
+        Variant: form.variants[index].title.trim() || `Variant ${index + 1}`,
+      },
+    }))
+  }
+
+  return {
+    status,
+    title: form.title.trim(),
+    subtitle: form.subtitle.trim() || undefined,
+    handle: form.handle.trim() || undefined,
+    description: form.description.trim() || undefined,
+    material: form.material.trim() || undefined,
+    weight: form.weight ? Number(form.weight) : undefined,
+    tags: form.tags
+      ? form.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+      : undefined,
+    thumbnail: form.thumbnail || form.images[0] || undefined,
+    images: form.images.map((url) => ({ url })),
+    category_ids: form.category_ids.length ? form.category_ids : undefined,
+    collection_id: form.collection_id || undefined,
+    destination_id: form.destination_id || undefined,
+    artisan_id: form.artisan_id || undefined,
+    options,
+    variants,
+  }
+}
+
+function ProductForm({
+  token,
+  productId,
+  taxonomy,
+  onDone,
+  onCancel,
+  onError,
+}: {
+  token: string
+  productId?: string
+  taxonomy: Taxonomy
+  onDone: (product: Product) => void
+  onCancel: () => void
+  onError: (message: string) => void
+}) {
+  const [form, setForm] = useState<FormState>(emptyForm)
+  const [loading, setLoading] = useState(Boolean(productId))
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState<"draft" | "proposed" | "">("")
+
+  useEffect(() => {
+    if (!productId) {
+      return
+    }
+    let active = true
+    api<{ product: ProductDetail }>(`/vendor/products/${productId}`, { token })
+      .then((response) => {
+        if (active) {
+          setForm(detailToForm(response.product))
+        }
+      })
+      .catch((caught) =>
+        onError(caught instanceof Error ? caught.message : "Failed to load product")
+      )
+      .finally(() => active && setLoading(false))
+    return () => {
+      active = false
+    }
+  }, [productId, token, onError])
+
+  const patch = (changes: Partial<FormState>) =>
+    setForm((current) => ({ ...current, ...changes }))
+
+  const handleUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+    if (!files.length) {
+      return
+    }
+    setUploading(true)
+    onError("")
+    try {
+      const urls = await Promise.all(
+        files.map((file) => uploadVendorMedia(file, token))
+      )
+      setForm((current) => ({
+        ...current,
+        images: [...current.images, ...urls],
+        thumbnail: current.thumbnail || urls[0],
+      }))
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Upload failed")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const removeImage = (url: string) =>
+    setForm((current) => ({
+      ...current,
+      images: current.images.filter((image) => image !== url),
+      thumbnail: current.thumbnail === url ? "" : current.thumbnail,
+    }))
+
+  const toggleCategory = (id: string) =>
+    setForm((current) => ({
+      ...current,
+      category_ids: current.category_ids.includes(id)
+        ? current.category_ids.filter((value) => value !== id)
+        : [...current.category_ids, id],
+    }))
+
+  const updateOption = (key: number, changes: Partial<OptionDraft>) =>
+    setForm((current) => ({
+      ...current,
+      options: current.options.map((option) =>
+        option.key === key ? { ...option, ...changes } : option
+      ),
+    }))
+
+  const updateVariant = (key: number, changes: Partial<VariantDraft>) =>
+    setForm((current) => ({
+      ...current,
+      variants: current.variants.map((variant) =>
+        variant.key === key ? { ...variant, ...changes } : variant
+      ),
+    }))
+
+  const submit = async (status: "draft" | "proposed") => {
+    if (!form.title.trim()) {
+      onError("A product title is required")
+      return
+    }
+    setSaving(status)
+    onError("")
+    try {
+      const body = buildPayload(form, status)
+      const response = productId
+        ? await api<{ product: Product | Product[] }>(
+            `/vendor/products/${productId}`,
+            { method: "POST", token, body }
+          )
+        : await api<{ product: Product }>("/vendor/products", {
+            method: "POST",
+            token,
+            body,
+          })
+      const product = Array.isArray(response.product)
+        ? response.product[0]
+        : response.product
+      onDone(product)
+    } catch (caught) {
+      onError(caught instanceof Error ? caught.message : "Could not save product")
+    } finally {
+      setSaving("")
+    }
+  }
+
+  if (loading) {
+    return <div className="product-form">Loading product…</div>
+  }
+
+  const busy = Boolean(saving) || uploading
+  const definedOptions = form.options.filter((option) => option.title.trim())
+
+  return (
+    <div className="product-form">
+      <section className="form-section">
+        <h4>Details</h4>
+        <p className="muted">The essentials customers see on the product page.</p>
+        <div className="field-grid">
+          <label className="wide">
+            Product title
+            <input
+              value={form.title}
+              onChange={(event) => patch({ title: event.target.value })}
+              minLength={2}
+              required
+            />
+          </label>
+          <label>
+            Subtitle <span>(optional)</span>
+            <input
+              value={form.subtitle}
+              onChange={(event) => patch({ subtitle: event.target.value })}
+            />
+          </label>
+          <label>
+            Handle <span>(optional)</span>
+            <input
+              value={form.handle}
+              onChange={(event) => patch({ handle: event.target.value })}
+              placeholder="auto-generated if blank"
+            />
+          </label>
+          <label className="wide">
+            Description
+            <textarea
+              rows={4}
+              value={form.description}
+              onChange={(event) => patch({ description: event.target.value })}
+            />
+          </label>
+          <label>
+            Material <span>(optional)</span>
+            <input
+              value={form.material}
+              onChange={(event) => patch({ material: event.target.value })}
+            />
+          </label>
+          <label>
+            Weight in grams <span>(optional)</span>
+            <input
+              type="number"
+              min={0}
+              value={form.weight}
+              onChange={(event) => patch({ weight: event.target.value })}
+            />
+          </label>
+          <label className="wide">
+            Tags <span>(comma separated)</span>
+            <input
+              value={form.tags}
+              onChange={(event) => patch({ tags: event.target.value })}
+              placeholder="handmade, wool, gift"
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="form-section">
+        <h4>Media</h4>
+        <p className="muted">
+          Upload photos; click a photo to make it the thumbnail.
+        </p>
+        <div className="image-grid">
+          {form.images.map((url) => (
+            <div
+              key={url}
+              className={`image-tile${form.thumbnail === url ? " is-thumb" : ""}`}
+            >
+              <img
+                src={url}
+                alt=""
+                onClick={() => patch({ thumbnail: url })}
+              />
+              <button
+                type="button"
+                className="tile-action"
+                onClick={() => removeImage(url)}
+              >
+                ✕
+              </button>
+              {form.thumbnail === url && <span className="thumb-flag">Thumbnail</span>}
+            </div>
+          ))}
+          <label className="upload-drop secondary-button">
+            {uploading ? "Uploading…" : "Add images"}
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={uploading}
+              onChange={handleUpload}
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="form-section">
+        <h4>Organize</h4>
+        <p className="muted">Help shoppers and the storefront find this product.</p>
+        <div className="field-grid">
+          <div className="wide">
+            <label>Categories</label>
+            <div className="checkbox-list" style={{ marginTop: 8 }}>
+              {taxonomy.categories.length === 0 && (
+                <span className="muted">No categories available.</span>
+              )}
+              {taxonomy.categories.map((category) => (
+                <label
+                  key={category.id}
+                  className={`checkbox-chip${
+                    form.category_ids.includes(category.id) ? " selected" : ""
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.category_ids.includes(category.id)}
+                    onChange={() => toggleCategory(category.id)}
+                  />
+                  {category.name}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label>
+            Collection
+            <select
+              value={form.collection_id}
+              onChange={(event) => patch({ collection_id: event.target.value })}
+            >
+              <option value="">None</option>
+              {taxonomy.collections.map((collection) => (
+                <option key={collection.id} value={collection.id}>
+                  {collection.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Destination
+            <select
+              value={form.destination_id}
+              onChange={(event) => patch({ destination_id: event.target.value })}
+            >
+              <option value="">None</option>
+              {taxonomy.destinations.map((destination) => (
+                <option key={destination.id} value={destination.id}>
+                  {destination.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Artisan
+            <select
+              value={form.artisan_id}
+              onChange={(event) => patch({ artisan_id: event.target.value })}
+            >
+              <option value="">None</option>
+              {taxonomy.artisans.map((artisan) => (
+                <option key={artisan.id} value={artisan.id}>
+                  {artisan.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section className="form-section">
+        <h4>Options</h4>
+        <p className="muted">
+          Optional — add options like Size or Colour (comma-separated values).
+          Leave blank for a single-variant product.
+        </p>
+        {form.options.map((option) => (
+          <div className="repeat-row" key={option.key}>
+            <div className="repeat-head">
+              <strong>Option</strong>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() =>
+                  patch({
+                    options: form.options.filter((o) => o.key !== option.key),
+                  })
+                }
+              >
+                Remove
+              </button>
+            </div>
+            <div className="field-grid">
+              <label>
+                Name
+                <input
+                  value={option.title}
+                  onChange={(event) =>
+                    updateOption(option.key, { title: event.target.value })
+                  }
+                  placeholder="Size"
+                />
+              </label>
+              <label>
+                Values <span>(comma separated)</span>
+                <input
+                  value={option.values}
+                  onChange={(event) =>
+                    updateOption(option.key, { values: event.target.value })
+                  }
+                  placeholder="S, M, L"
+                />
+              </label>
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="add-row-button"
+          onClick={() =>
+            patch({
+              options: [
+                ...form.options,
+                { key: nextKey(), title: "", values: "" },
+              ],
+            })
+          }
+        >
+          + Add option
+        </button>
+      </section>
+
+      <section className="form-section">
+        <h4>Variants &amp; pricing</h4>
+        <p className="muted">Each buyable version with its NPR price and stock.</p>
+        {form.variants.map((variant, index) => (
+          <div className="repeat-row" key={variant.key}>
+            <div className="repeat-head">
+              <strong>Variant {index + 1}</strong>
+              {form.variants.length > 1 && (
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() =>
+                    patch({
+                      variants: form.variants.filter((v) => v.key !== variant.key),
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <div className="variant-grid">
+              <label>
+                Title
+                <input
+                  value={variant.title}
+                  onChange={(event) =>
+                    updateVariant(variant.key, { title: event.target.value })
+                  }
+                  placeholder="Default"
+                />
+              </label>
+              <label>
+                SKU <span>(optional)</span>
+                <input
+                  value={variant.sku}
+                  onChange={(event) =>
+                    updateVariant(variant.key, { sku: event.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Price (NPR)
+                <input
+                  type="number"
+                  min={1}
+                  step="0.01"
+                  value={variant.price}
+                  onChange={(event) =>
+                    updateVariant(variant.key, { price: event.target.value })
+                  }
+                />
+              </label>
+              {definedOptions.map((option) => (
+                <label key={option.key}>
+                  {option.title || "Option"}
+                  <select
+                    value={variant.options[option.title] ?? ""}
+                    onChange={(event) =>
+                      updateVariant(variant.key, {
+                        options: {
+                          ...variant.options,
+                          [option.title]: event.target.value,
+                        },
+                      })
+                    }
+                  >
+                    <option value="">Select</option>
+                    {option.values
+                      .split(",")
+                      .map((value) => value.trim())
+                      .filter(Boolean)
+                      .map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <label className="inline-check" style={{ marginTop: 12 }}>
+              <input
+                type="checkbox"
+                checked={variant.manage_inventory}
+                onChange={(event) =>
+                  updateVariant(variant.key, {
+                    manage_inventory: event.target.checked,
+                  })
+                }
+              />
+              Track inventory for this variant
+            </label>
+            {variant.manage_inventory && (
+              <label style={{ marginTop: 10, maxWidth: 220 }}>
+                Stock on hand
+                <input
+                  type="number"
+                  min={0}
+                  value={variant.inventory_quantity}
+                  onChange={(event) =>
+                    updateVariant(variant.key, {
+                      inventory_quantity: event.target.value,
+                    })
+                  }
+                  placeholder="0"
+                />
+              </label>
+            )}
+          </div>
+        ))}
+        <button
+          type="button"
+          className="add-row-button"
+          onClick={() => patch({ variants: [...form.variants, blankVariant()] })}
+        >
+          + Add variant
+        </button>
+      </section>
+
+      <div className="form-actions">
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy}
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={busy}
+          onClick={() => submit("draft")}
+        >
+          {saving === "draft" ? "Saving…" : "Save draft"}
+        </button>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={busy}
+          onClick={() => submit("proposed")}
+        >
+          {saving === "proposed" ? "Submitting…" : "Submit for review"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const STATUS_HINT: Record<Product["status"], string> = {
+  draft: "Not submitted yet",
+  proposed: "Awaiting admin approval",
+  published: "Live — edits go live instantly",
+  rejected: "Rejected — edit and resubmit",
+}
+
 function Products({
   products,
   seller,
@@ -430,84 +1169,98 @@ function Products({
   onChange: (products: Product[]) => void
   onError: (message: string) => void
 }) {
-  const [creating, setCreating] = useState(false)
-  const [busyId, setBusyId] = useState("")
+  // "new" opens the create form, a product id opens that product for editing.
+  const [editing, setEditing] = useState<"new" | string | null>(null)
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>({
+    categories: [],
+    collections: [],
+    destinations: [],
+    artisans: [],
+  })
 
-  const createProduct = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    const stamp = Date.now()
-    setBusyId("create")
-    onError("")
-    try {
-      const response = await api<{ product: Product }>("/vendor/products", {
-        method: "POST",
-        token,
-        body: {
-          title: String(data.get("title")),
-          description: String(data.get("description") ?? ""),
-          options: [{ title: "Option", values: ["Default"] }],
-          variants: [{
-            title: "Default",
-            sku: `SELLER-${stamp}`,
-            options: { Option: "Default" },
-            prices: [{ currency_code: "npr", amount: Number(data.get("price")) }],
-          }],
-        },
-      })
-      onChange([response.product, ...products])
-      form.reset()
-      setCreating(false)
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Product creation failed")
-    } finally {
-      setBusyId("")
+  useEffect(() => {
+    if (seller.status !== "active") {
+      return
     }
+    Promise.all([
+      api<{ product_categories: Category[] }>("/vendor/product-categories", { token }),
+      api<{ collections: Collection[] }>("/vendor/collections", { token }),
+      api<{ destinations: Taxon[] }>("/vendor/destinations", { token }),
+      api<{ artisans: Taxon[] }>("/vendor/artisans", { token }),
+    ])
+      .then(([categories, collections, destinations, artisans]) =>
+        setTaxonomy({
+          categories: categories.product_categories,
+          collections: collections.collections,
+          destinations: destinations.destinations,
+          artisans: artisans.artisans,
+        })
+      )
+      .catch(() => {
+        /* selectors are best-effort; the form still works without them */
+      })
+  }, [seller.status, token])
+
+  const handleDone = (product: Product) => {
+    const exists = products.some((item) => item.id === product.id)
+    onChange(
+      exists
+        ? products.map((item) => (item.id === product.id ? product : item))
+        : [product, ...products]
+    )
+    setEditing(null)
   }
 
-  const toggleProduct = async (product: Product) => {
-    setBusyId(product.id)
-    onError("")
-    const status = product.status === "published" ? "draft" : "published"
-    try {
-      const response = await api<{ product: Product[] | Product }>(
-        `/vendor/products/${product.id}`,
-        { method: "POST", token, body: { status } }
-      )
-      const updated = Array.isArray(response.product)
-        ? response.product[0]
-        : response.product
-      onChange(products.map((item) => item.id === product.id ? updated : item))
-    } catch (caught) {
-      onError(caught instanceof Error ? caught.message : "Product update failed")
-    } finally {
-      setBusyId("")
-    }
+  if (editing) {
+    return (
+      <section>
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Catalog</p>
+            <h3>{editing === "new" ? "New product" : "Edit product"}</h3>
+          </div>
+        </div>
+        <ProductForm
+          token={token}
+          productId={editing === "new" ? undefined : editing}
+          taxonomy={taxonomy}
+          onDone={handleDone}
+          onCancel={() => setEditing(null)}
+          onError={onError}
+        />
+      </section>
+    )
   }
 
   return (
     <section>
       <div className="section-heading">
         <div><p className="eyebrow">Catalog</p><h3>Products</h3></div>
-        <button className="primary-button compact" disabled={seller.status !== "active"} onClick={() => setCreating(!creating)}>Add product</button>
+        <button
+          className="primary-button compact"
+          disabled={seller.status !== "active"}
+          onClick={() => setEditing("new")}
+        >
+          Add product
+        </button>
       </div>
-      {creating && (
-        <form className="create-card" onSubmit={createProduct}>
-          <label>Product title<input name="title" minLength={2} required /></label>
-          <label>Price (NPR)<input name="price" type="number" min={1} step="0.01" required /></label>
-          <label className="wide">Description<textarea name="description" rows={3} /></label>
-          <div className="wide form-actions"><button type="button" className="secondary-button" onClick={() => setCreating(false)}>Cancel</button><button className="primary-button" disabled={busyId === "create"}>Publish product</button></div>
-        </form>
-      )}
       <div className="table-card">
         <div className="table-row table-head"><span>Product</span><span>Variants</span><span>Status</span><span></span></div>
         {products.length === 0 ? <p className="empty">No products yet.</p> : products.map((product) => (
           <div className="table-row" key={product.id}>
-            <strong>{product.title}</strong>
+            <div>
+              <strong>{product.title}</strong>
+              <div className="muted" style={{ fontSize: 12 }}>{STATUS_HINT[product.status]}</div>
+            </div>
             <span>{product.variants?.length ?? 0}</span>
             <span className={`status status-${product.status}`}>{product.status}</span>
-            <button className="text-button" disabled={busyId === product.id || seller.status !== "active"} onClick={() => toggleProduct(product)}>{product.status === "published" ? "Unpublish" : "Publish"}</button>
+            <button
+              className="text-button"
+              disabled={seller.status !== "active"}
+              onClick={() => setEditing(product.id)}
+            >
+              Edit
+            </button>
           </div>
         ))}
       </div>

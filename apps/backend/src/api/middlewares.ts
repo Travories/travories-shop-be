@@ -8,6 +8,7 @@ import { createFindParams } from "@medusajs/medusa/api/utils/validators"
 
 import { UpdatePayoutSchema } from "./admin/payouts/validators"
 import { UpdateSellerSchema } from "./admin/sellers/validators"
+import { ReviewVendorProductSchema } from "./admin/vendor-products/validators"
 import { CreateSellerSchema } from "./vendor/sellers/validators"
 import { CreateVendorFulfillmentSchema } from "./vendor/orders/validators"
 import {
@@ -65,6 +66,32 @@ export default defineMiddlewares({
         authenticate("seller", ["session", "bearer"]),
         validateAndTransformBody(UpdateVendorProductSchema),
       ],
+    },
+    // Vendor form helpers: taxonomy/organize selectors and media uploads.
+    {
+      matcher: "/vendor/product-categories",
+      method: "GET",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
+    {
+      matcher: "/vendor/collections",
+      method: "GET",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
+    {
+      matcher: "/vendor/destinations",
+      method: "GET",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
+    {
+      matcher: "/vendor/artisans",
+      method: "GET",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
+    },
+    {
+      matcher: "/vendor/media/upload-url",
+      method: "POST",
+      middlewares: [authenticate("seller", ["session", "bearer"])],
     },
     {
       matcher: "/vendor/payouts",
@@ -143,6 +170,11 @@ export default defineMiddlewares({
       matcher: "/admin/payouts/:id",
       method: "POST",
       middlewares: [validateAndTransformBody(UpdatePayoutSchema)],
+    },
+    {
+      matcher: "/admin/vendor-products/:id",
+      method: "POST",
+      middlewares: [validateAndTransformBody(ReviewVendorProductSchema)],
     },
   ],
 })

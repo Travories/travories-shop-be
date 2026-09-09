@@ -12,22 +12,31 @@ export const getVendorProductDefaultsStep = createStep(
   async (_, { container }) => {
     const query = container.resolve(ContainerRegistrationKeys.QUERY)
 
-    const [{ data: stores }, { data: channels }, { data: profiles }] =
-      await Promise.all([
-        query.graph({
-          entity: "store",
-          fields: ["default_sales_channel_id"],
-        }),
-        query.graph({
-          entity: "sales_channel",
-          fields: ["id"],
-          pagination: { take: 1 },
-        }),
-        query.graph({
-          entity: "shipping_profile",
-          fields: ["id", "type"],
-        }),
-      ])
+    const [
+      { data: stores },
+      { data: channels },
+      { data: profiles },
+      { data: locations },
+    ] = await Promise.all([
+      query.graph({
+        entity: "store",
+        fields: ["default_sales_channel_id"],
+      }),
+      query.graph({
+        entity: "sales_channel",
+        fields: ["id"],
+        pagination: { take: 1 },
+      }),
+      query.graph({
+        entity: "shipping_profile",
+        fields: ["id", "type"],
+      }),
+      query.graph({
+        entity: "stock_location",
+        fields: ["id"],
+        pagination: { take: 1 },
+      }),
+    ])
 
     const defaultSalesChannelId = (
       stores[0] as { default_sales_channel_id?: string | null } | undefined
@@ -38,6 +47,7 @@ export const getVendorProductDefaultsStep = createStep(
     const shippingProfile =
       typedProfiles.find((profile) => profile.type === "default") ??
       typedProfiles[0]
+    const stockLocationId = (locations[0] as { id?: string } | undefined)?.id
 
     if (!salesChannelId) {
       throw new MedusaError(
@@ -53,9 +63,17 @@ export const getVendorProductDefaultsStep = createStep(
       )
     }
 
+    if (!stockLocationId) {
+      throw new MedusaError(
+        MedusaError.Types.NOT_FOUND,
+        "No stock location is configured for vendor products"
+      )
+    }
+
     return new StepResponse({
       sales_channel_id: salesChannelId,
       shipping_profile_id: shippingProfile.id,
+      stock_location_id: stockLocationId,
     })
   }
 )

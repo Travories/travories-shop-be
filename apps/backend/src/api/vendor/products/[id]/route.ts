@@ -6,9 +6,10 @@ import {
   ContainerRegistrationKeys,
   MedusaError,
 } from "@medusajs/framework/utils"
-import { UpdateProductWorkflowInputDTO } from "@medusajs/framework/types"
-
-import { updateVendorProductWorkflow } from "../../../../workflows/marketplace/update-vendor-product"
+import {
+  updateVendorProductWorkflow,
+  UpdateVendorProductInput,
+} from "../../../../workflows/marketplace/update-vendor-product"
 import { getSellerIdForMember } from "../../helpers"
 import { UpdateVendorProductSchema } from "../validators"
 
@@ -35,9 +36,23 @@ export async function GET(
       "status",
       "description",
       "thumbnail",
+      "material",
+      "weight",
+      "metadata",
       "seller.id",
+      "collection.id",
+      "categories.id",
+      "categories.name",
+      "tags.value",
+      "images.url",
       "variants.*",
+      "variants.prices.*",
+      "variants.inventory_items.inventory.location_levels.stocked_quantity",
       "options.*",
+      "destination.id",
+      "destination.name",
+      "artisan.id",
+      "artisan.name",
     ],
     filters: { id: req.params.id },
   })
@@ -73,7 +88,7 @@ export async function POST(
     input: {
       seller_id: sellerId,
       product_id: req.params.id,
-      update: req.validatedBody as unknown as UpdateProductWorkflowInputDTO,
+      update: req.validatedBody as unknown as UpdateVendorProductInput,
     },
   })
 

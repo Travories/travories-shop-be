@@ -3,9 +3,11 @@ import {
   MedusaResponse,
 } from "@medusajs/framework/http"
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils"
-import { CreateProductWorkflowInputDTO } from "@medusajs/framework/types"
 
-import { createVendorProductWorkflow } from "../../../workflows/marketplace/create-vendor-product"
+import {
+  createVendorProductWorkflow,
+  CreateVendorProductInput,
+} from "../../../workflows/marketplace/create-vendor-product"
 import { getSellerIdForMember } from "../helpers"
 import { CreateVendorProductSchema } from "./validators"
 
@@ -24,7 +26,7 @@ export async function POST(
   const { result } = await createVendorProductWorkflow(req.scope).run({
     input: {
       seller_id: sellerId,
-      product: req.validatedBody as unknown as CreateProductWorkflowInputDTO,
+      product: req.validatedBody as unknown as CreateVendorProductInput,
     },
   })
 

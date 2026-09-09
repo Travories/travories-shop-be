@@ -36,8 +36,8 @@ h1, h2, h3, p { margin-top: 0; }
 form { display: grid; gap: 18px; }
 label { display: grid; gap: 8px; font-size: 13px; font-weight: 700; }
 label span { color: var(--muted); font-weight: 400; }
-input, textarea { width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; outline: none; }
-input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgb(40 96 68 / 12%); }
+input, textarea, select { width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: white; outline: none; }
+input:focus, textarea:focus, select:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgb(40 96 68 / 12%); }
 
 .primary-button, .secondary-button { padding: 12px 18px; border: 1px solid var(--green-dark); border-radius: 8px; font-weight: 700; }
 .primary-button { color: white; background: var(--green-dark); }
@@ -68,6 +68,36 @@ input:focus, textarea:focus { border-color: var(--green); box-shadow: 0 0 0 3px 
 .status-suspended, .status-rejected { color: #842f27; background: #f3d8d4; }
 .status-partially_reversed, .status-reversed { color: #842f27; background: #f3d8d4; }
 .status-draft { color: #5b625e; background: #e5e6e3; }
+.status-proposed { color: #795716; background: #f8dfaa; }
+
+.product-form { margin-bottom: 24px; padding: 26px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.product-form .form-section { padding: 22px 0; border-top: 1px solid var(--line); }
+.product-form .form-section:first-of-type { padding-top: 0; border-top: 0; }
+.product-form .form-section > h4 { margin: 0 0 4px; font-family: Georgia, serif; font-size: 19px; font-weight: 500; }
+.product-form .form-section > .muted { margin: 0 0 16px; font-size: 13px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.field-grid .wide { grid-column: 1 / -1; }
+.checkbox-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.checkbox-chip { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 99px; font-size: 13px; font-weight: 700; background: white; }
+.checkbox-chip input { width: auto; }
+.checkbox-chip.selected { border-color: var(--green); color: var(--green-dark); background: #e7f1ea; }
+.inline-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.inline-check input { width: auto; }
+
+.image-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+.image-tile { position: relative; width: 92px; height: 92px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #efede5; }
+.image-tile img { width: 100%; height: 100%; object-fit: cover; }
+.image-tile.is-thumb { border-color: var(--green); box-shadow: 0 0 0 2px rgb(40 96 68 / 25%); }
+.image-tile .tile-action { position: absolute; top: 4px; right: 4px; padding: 2px 7px; border: 0; border-radius: 6px; font-size: 11px; font-weight: 800; color: white; background: rgb(23 61 45 / 80%); }
+.image-tile .thumb-flag { position: absolute; bottom: 0; left: 0; right: 0; padding: 2px; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-align: center; color: white; background: var(--green); text-transform: uppercase; }
+.upload-drop { display: inline-flex; align-items: center; }
+.upload-drop input { display: none; }
+
+.repeat-row { margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: white; }
+.repeat-row .repeat-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.repeat-row .repeat-head strong { font-size: 13px; }
+.variant-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.add-row-button { margin-top: 14px; padding: 10px 14px; border: 1px dashed var(--green); border-radius: 8px; color: var(--green-dark); background: transparent; font-weight: 700; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .metric-card { min-height: 190px; padding: 25px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 .metric-card span, .metric-card small { color: var(--muted); }
