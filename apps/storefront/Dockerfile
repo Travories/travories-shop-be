@@ -25,6 +25,7 @@ WORKDIR /app
 COPY package.json package-lock.json turbo.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY apps/storefront/package.json apps/storefront/package.json
+COPY apps/vendor-dashboard/package.json apps/vendor-dashboard/package.json
 
 RUN npm ci
 
