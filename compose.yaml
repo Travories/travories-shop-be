@@ -1,9 +1,8 @@
 # Runs the three apps of this repo — nothing else.
 #
 # PostgreSQL, Redis and nginx (TLS + domain routing) are EXTERNAL and are not
-# managed here. Point DATABASE_URL / REDIS_URL at them in `.env`; anything
-# living on the Docker host is reachable as `host.docker.internal` thanks to
-# the extra_hosts entries below.
+# managed here. Point DATABASE_URL and REDIS_DOCKER_URL at them in `.env`;
+# anything living on the Docker host is reachable as `host.docker.internal`.
 #
 # Both services read the single root `.env` — copy `.env.example` to `.env`
 # first. NEXT_PUBLIC_* values are baked into the storefront bundle at build
@@ -25,6 +24,11 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      # REDIS_URL may use localhost for host-side development. Containers must
+      # use a Docker-reachable address for the externally managed Redis server.
+      # An empty default keeps single-instance deployments bootable until the
+      # external service is provisioned; set REDIS_DOCKER_URL in production.
+      REDIS_URL: ${REDIS_DOCKER_URL:-}
     ports:
       # Host ${PORT_BE} serves BOTH the Store/Admin API and the admin
       # dashboard at /app — nginx fans api.* and admin.* onto this one port.
