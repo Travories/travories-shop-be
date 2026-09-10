@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { buildSiteMetadata } from "@lib/seo"
 import { Playfair_Display, Poppins } from "next/font/google"
 import SmoothScroll from "@modules/common/components/smooth-scroll"
+import "../styles/globals.css"
 
 
 const poppins = Poppins({
