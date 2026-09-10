@@ -52,11 +52,7 @@ USER node
 
 EXPOSE 9000
 
-# Run pending migrations against the external DB, then boot Medusa.
-#
-# `exec` on the second command matters: without it `sh` stays PID 1, and a
-# POSIX shell waiting on a child does not forward signals to it. `docker stop`
-# would SIGTERM the shell, Medusa would never hear it, and 10s later the
-# container would be SIGKILLed mid-request. exec replaces the shell so Medusa
-# receives the signal itself and shuts down gracefully.
-CMD ["sh", "-c", "npx medusa db:migrate && exec npx medusa start"]
+# Database migrations are an explicit deployment step. Running the complete
+# migration scan on every restart can prevent the server from ever binding when
+# a remote PostgreSQL connection briefly drops.
+CMD ["npx", "medusa", "start"]

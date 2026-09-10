@@ -15,9 +15,10 @@
 # Requires nginx on the host to already be proxying api.<domain> to PORT_BE,
 # because the build resolves the PUBLIC url, not the container name.
 #
-#   ./scripts/deploy.sh              # both apps
+#   ./scripts/deploy.sh              # all apps
 #   ./scripts/deploy.sh backend      # backend only
 #   ./scripts/deploy.sh storefront   # storefront only (backend must be healthy)
+#   ./scripts/deploy.sh vendor       # vendor dashboard only (backend must be healthy)
 
 set -euo pipefail
 
@@ -55,8 +56,10 @@ wait_for_backend() {
 }
 
 if [ "$target" = "all" ] || [ "$target" = "backend" ]; then
-  echo "==> phase 1: build + start the backend (migrations run on boot)"
-  docker compose up -d --build backend
+  echo "==> phase 1: build and migrate the backend"
+  docker compose build backend
+  docker compose run --rm --no-deps backend npx medusa db:migrate
+  docker compose up -d backend
   wait_for_backend
 fi
 
@@ -85,6 +88,15 @@ if [ "$target" = "all" ] || [ "$target" = "storefront" ]; then
 
   echo "==> phase 2: build + start the storefront"
   docker compose up -d --build storefront
+fi
+
+if [ "$target" = "all" ] || [ "$target" = "vendor" ]; then
+  if [ "$target" = "vendor" ]; then
+    wait_for_backend
+  fi
+
+  echo "==> phase 3: build + start the vendor dashboard"
+  docker compose up -d --build vendor-dashboard
 fi
 
 docker compose ps

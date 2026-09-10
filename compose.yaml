@@ -29,6 +29,8 @@ services:
       # An empty default keeps single-instance deployments bootable until the
       # external service is provisioned; set REDIS_DOCKER_URL in production.
       REDIS_URL: ${REDIS_DOCKER_URL:-}
+    # Override older cached images that still ran migrations in their CMD.
+    command: ["npx", "medusa", "start"]
     ports:
       # Host ${PORT_BE} serves BOTH the Store/Admin API and the admin
       # dashboard at /app — nginx fans api.* and admin.* onto this one port.
@@ -47,8 +49,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      # Migrations run before the server boots, so allow a slow first start.
-      start_period: 90s
+      start_period: 30s
 
   storefront:
     build:
